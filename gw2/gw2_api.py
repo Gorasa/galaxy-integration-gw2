@@ -137,10 +137,11 @@ class GW2API(object):
         ids = list(object_ids)
         for i in range(0, len(ids), self.API_IDS_PER_REQUEST):
             chunk = ids[i:i + self.API_IDS_PER_REQUEST]
-            (status, objects) = await self.__api_get_response(self._api_key, url, {'ids': ','.join(str(x) for x in chunk)})
+            (status, objects) = await self.__api_get_response(self._api_key, url, {'ids': ','.join(str(x) for x in chunk)}, expected_statuses = (404,))
 
             #404 means that none of the requested ids exists
             if status == 404:
+                self.__logger.info('__get_names: unknown ids for %s: %s' % (url, chunk))
                 continue
 
             #206 means that some of the requested ids do not exist
@@ -195,7 +196,7 @@ class GW2API(object):
         return GW2AuthorizationResult.FINISHED
 
 
-    async def __api_get_response(self, api_key, url, parameters = None):
+    async def __api_get_response(self, api_key, url, parameters = None, expected_statuses = ()):
         #update authorization header
         if api_key:
             self.__http.update_headers({'Authorization': 'Bearer ' + api_key})
@@ -227,7 +228,7 @@ class GW2API(object):
                 await asyncio.sleep(self.RETRY_DELAY * attempt)
                 continue
 
-            if status not in (200, 206):
+            if status not in (200, 206) and status not in expected_statuses:
                 self.__logger.warning('__api_get_response: error, url=%s, status=%s, text=%s' % (url, status, resp.text))
             break
 
