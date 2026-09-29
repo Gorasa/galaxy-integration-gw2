@@ -6,11 +6,12 @@ Features:
 * Import of the owned game and expansions (Heart of Thorns, Path of Fire, ...)
 * Detection of installed and running game, launch, install and uninstall
 * Import of game time and achievements
+* New legendary armory unlocks are shown as achievements (e.g. "Legendary: Astralaria") in the GOG Galaxy activity feed
 
 ## Requirements
 
 * GOG Galaxy 2.1 or newer (64-bit). The older 32-bit GOG Galaxy 2.0 client is not supported anymore, use version 0.5.2 for it.
-* A Guild Wars 2 API key with the `account` and `progression` permissions, created at https://account.arena.net/applications
+* A Guild Wars 2 API key with the `account` and `progression` permissions, created at https://account.arena.net/applications. The legendary armory import additionally requires the `inventories` and `unlocks` permissions; without them it is skipped. To change the permissions later, create a new key and reconnect the integration.
 
 ## Installation
 
@@ -25,6 +26,10 @@ GOG Galaxy 2.1+ runs plugins with a bundled 64-bit Python 3.13, so the third-par
 1. Run `download_deps.cmd` (Windows) or `download_deps.sh` (Linux/macOS). This fills `3rdparty_windows/` with the packages from `requirements.txt`.
 2. Copy the repository content (without `.git`) to `%localappdata%\GOG.com\Galaxy\plugins\installed\gw2\`.
 
+## Achievement names
+
+`gw2/db/achievements.json` contains the names of all achievements known when it was generated. Names of newer achievements are requested from the API at runtime. To update the file run `python tools/update_achievements_db.py`. The `Update achievements DB` GitHub workflow does this monthly (or manually via "Run workflow") and opens a pull request if the file changed.
+
 ## Logs
 
 Plugin logs are written to `%programdata%\GOG.com\Galaxy\logs\` (file name starting with `plugin-gw2-`).
@@ -38,6 +43,9 @@ Plugin logs are written to `%programdata%\GOG.com\Galaxy\logs\` (file name start
 * Removed macOS support
 * TLS certificates of the Guild Wars 2 API are verified again
 * Fixed newly unlocked achievements not being pushed to GOG Galaxy
+* Fixed achievements added to the game after 2020 not being imported: names missing in the offline DB are requested from the API
+* Legendary armory unlocks are imported as achievements
+* Fixed every API request being sent 5 times, errors are retried with a delay now
 * Fixed wrong pages shown after login
 
 Older versions: https://github.com/Mixaill/galaxy-integration-gw2/releases
