@@ -18,10 +18,9 @@ class MglxHttp:
         self.__logger = logging.getLogger('mglx_http')
 
         if verify_ssl:
-            self.__sslcontext = ssl.create_default_context(cafile=certifi.where())
-            self.__connector = aiohttp.TCPConnector(ssl_context=self.__sslcontext)
+            self.__connector = aiohttp.TCPConnector(ssl=ssl.create_default_context(cafile=certifi.where()))
         else:
-            self.__connector = aiohttp.TCPConnector(verify_ssl=False)
+            self.__connector = aiohttp.TCPConnector(ssl=False)
 
         self.__session_headers = {'User-Agent': self.__user_agent}
         self.__session = aiohttp.ClientSession(connector=self.__connector, headers = self.__session_headers)
@@ -56,23 +55,23 @@ class MglxHttp:
                     else:
                         break
             except aiohttp.ClientConnectionError:
-                self.__logger.warn('request: [%s]%s --> aiohttp.ClientConnectionError' % (method, url))
+                self.__logger.warning('request: [%s]%s --> aiohttp.ClientConnectionError' % (method, url))
                 response_status = 0
                 break
             except asyncio.CancelledError:
-                self.__logger.warn('request: [%s]%s --> asyncio.CancelledError' % (method, url))
+                self.__logger.warning('request: [%s]%s --> asyncio.CancelledError' % (method, url))
                 response_status = 499 #499 Client Closed Request
                 break
             except asyncio.TimeoutError:
-                self.__logger.warn('request: [%s]%s --> asyncio.TimeoutError' % (method, url))
+                self.__logger.warning('request: [%s]%s --> asyncio.TimeoutError' % (method, url))
                 response_status = 408 #408 Request Timeout
                 break
             except RuntimeError:
-                self.__logger.warn('request: [%s]%s --> RuntimeError' % (method, url))
+                self.__logger.warning('request: [%s]%s --> RuntimeError' % (method, url))
                 response_status = 0
                 break
             except TimeoutError:
-                self.__logger.warn('request: [%s]%s --> TimeoutError' % (method, url))
+                self.__logger.warning('request: [%s]%s --> TimeoutError' % (method, url))
                 response_status = 408 #408 Request Timeout
                 break
 

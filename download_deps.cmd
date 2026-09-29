@@ -1,4 +1,2 @@
-python -m piptools compile ./requirements.txt --output-file ./requirements_compiled.txt 
-python -m pip install -r ./requirements_compiled.txt --platform win32 --target ./3rdparty_windows --python-version 37 --no-compile --no-deps
-python -m pip install -r ./requirements_compiled.txt --platform macosx_10_13_x86_64 --target ./3rdparty_macos --python-version 37 --no-compile --no-deps
-del requirements_compiled.txt 
+rem Galaxy 2.1+ runs plugins with 64-bit Python 3.13, so pip must also run on Python 3.13
+py -3.13 -m pip install -r ./requirements.txt --platform win_amd64 --python-version 3.13 --implementation cp --only-binary=:all: --target ./3rdparty_windows --no-compile --upgrade
