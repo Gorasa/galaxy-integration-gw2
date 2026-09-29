@@ -79,10 +79,12 @@ class GuildWars2Plugin(Plugin):
         self.__imported_achievements = None
 
 
-        self.__achievements_db = None
+        #achievement names, the offline DB is completed by names from the API
+        self.__achievement_names = dict()
+        self.__achievements_invalid = set()
         try:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gw2/db/achievements.json"), mode="r", encoding="utf-8") as f:
-                self.__achievements_db = json.load(f)
+                self.__achievement_names = {int(k): v for k, v in json.load(f).items()}
         except Exception:
             self.__logger.exception('__init__: failed to read achievements info DB')
 
@@ -243,49 +245,56 @@ class GuildWars2Plugin(Plugin):
     #
 
     async def get_unlocked_achievements(self, game_id: str, context: Any) -> List[Achievement]:
-        result = list()
-
         if game_id != self.GAME_ID:
             self.__logger.warning('plugin/get_unlocked_achievements: unknown game_id %s' % game_id)
-            return result
+            return list()
 
-        if not self.__imported_achievements:
-            self.__imported_achievements = list()
+        self.__imported_achievements = list()
+        return await self.__import_new_achievements()
 
-        self.__imported_achievements.clear()
-        for achievement_id in await self._gw2_api.get_account_achievements():
-            #check for existence    
-            if not self.__is_achievement_exists(achievement_id):
+    async def __import_new_achievements(self) -> List[Achievement]:
+        '''
+        returns account achievements which were not imported yet and marks them as imported
+        '''
+        result = list()
+
+        achievement_ids = [x for x in await self._gw2_api.get_account_achievements() if x not in self.__imported_achievements]
+        await self.__resolve_achievement_names(achievement_ids)
+
+        for achievement_id in achievement_ids:
+            #skip achievements without known name, they will be retried on next check
+            if achievement_id not in self.__achievement_names:
                 continue
+
+            #mark as processed
+            self.__imported_achievements.append(achievement_id)
 
             #save unlock time
             cache_key = 'achievement_%s' % achievement_id
             if cache_key not in self.persistent_cache:
                 self.persistent_cache[cache_key] = int(time.time())
 
-            #mark as processed
-            self.__imported_achievements.append(achievement_id)
+            result.append(Achievement(self.persistent_cache.get(cache_key), achievement_id, self.__achievement_names[achievement_id]))
 
-            #append to list
-            result.append(Achievement(self.persistent_cache.get(cache_key), achievement_id, self.__get_achievement_name(achievement_id)))
+        if result:
+            self.push_cache()
 
-        self.push_cache()
         return result
 
-    def __is_achievement_exists(self, achievement_id: int) -> bool:
-        if not self.__achievements_db:
-            return False
-        
-        if str(achievement_id) not in self.__achievements_db:
-            return False
+    async def __resolve_achievement_names(self, achievement_ids: List[int]) -> None:
+        '''
+        requests names of achievements which are missing in the offline DB (e.g. added after the DB was created)
+        '''
+        unknown_ids = [x for x in achievement_ids if x not in self.__achievement_names and x not in self.__achievements_invalid]
+        if not unknown_ids:
+            return
 
-        return True
+        (names, failed_ids) = await self._gw2_api.get_achievement_names(unknown_ids)
+        self.__achievement_names.update(names)
 
-    def __get_achievement_name(self, achievement_id: int) -> str:
-        if not self.__is_achievement_exists(achievement_id):
-            return 'achievement_%s' % achievement_id
-
-        return self.__achievements_db[str(achievement_id)]
+        #ids which are unknown to the API as well are never imported
+        self.__achievements_invalid.update(x for x in unknown_ids if x not in names and x not in failed_ids)
+        self.__logger.info('__resolve_achievement_names: requested %s, resolved %s, failed %s' % (len(unknown_ids), len(names), len(failed_ids)))
 
     #
     # ImportLocalSize
@@ -324,26 +333,8 @@ class GuildWars2Plugin(Plugin):
 
     async def task_check_for_achievements(self):
         if self.__imported_achievements is not None:
-            unlocked = False
-            for achievement_id in await self._gw2_api.get_account_achievements():
-                if achievement_id not in self.__imported_achievements:
-                    #check for existence
-                    if not self.__is_achievement_exists(achievement_id):
-                        continue
-
-                    #mark as processed
-                    self.__imported_achievements.append(achievement_id)
-                    unlocked = True
-
-                    #save unlock time
-                    cache_key = 'achievement_%s' % achievement_id
-                    self.persistent_cache[cache_key] = int(time.time())
-
-                    #push to galaxy
-                    self.unlock_achievement(self.GAME_ID, Achievement(self.persistent_cache.get(cache_key), achievement_id, self.__get_achievement_name(achievement_id)))
-
-            if unlocked:
-                self.push_cache()
+            for achievement in await self.__import_new_achievements():
+                self.unlock_achievement(self.GAME_ID, achievement)
 
         await asyncio.sleep(self.SLEEP_CHECK_ACHIEVEMENTS)
 
