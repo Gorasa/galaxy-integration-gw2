@@ -38,7 +38,7 @@ class MglxWebserver():
         elif request_type == 'POST':
             return self.__app.add_routes([aiohttp.web.post(url, handler)])
         else:
-            self._logger('add_route: unknown request_type "%s"' % request_type)
+            self._logger.error('add_route: unknown request_type "%s"' % request_type)
             return None
 
     #

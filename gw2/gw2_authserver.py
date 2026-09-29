@@ -19,7 +19,7 @@ class Gw2AuthServer(common.mglx_webserver.MglxWebserver):
         self.add_route('GET', '/', self.handle_login_get)
         self.add_route('GET', '/login', self.handle_login_get)
         self.add_route('GET', '/login_baddata', self.handle_login_baddata_get)
-        self.add_route('GET', '/login_failed', self.handle_login_baddata_get)
+        self.add_route('GET', '/login_failed', self.handle_login_failed_get)
         self.add_route('GET', '/login_noaccount', self.handle_login_noaccount_get)
         self.add_route('GET', '/finished', self.handle_finished_get)
 
@@ -42,7 +42,7 @@ class Gw2AuthServer(common.mglx_webserver.MglxWebserver):
         return aiohttp.web.FileResponse(os.path.join(os.path.dirname(os.path.realpath(__file__)),'html/login_noaccount.html'))
 
     async def handle_finished_get(self, request):
-        return aiohttp.web.FileResponse(os.path.join(os.path.dirname(os.path.realpath(__file__)),'html/login_noaccount.html'))
+        return aiohttp.web.FileResponse(os.path.join(os.path.dirname(os.path.realpath(__file__)),'html/finished.html'))
 
     async def handle_login_post(self, request):
         data = await request.post()

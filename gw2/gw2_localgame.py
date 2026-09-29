@@ -4,7 +4,6 @@
 import asyncio
 import logging
 import os
-import platform
 import subprocess
 from typing import List
 import xml.etree.ElementTree as ElementTree
@@ -14,7 +13,7 @@ class GWLocalGame(object):
         self.__logger = logging.getLogger('gw2_local_game')
         self.__directory = game_dir
         self.__executable = game_executable
-        self.__creationflags = 0x00000008 if platform.system() == 'Windows' else 0
+        self.__creationflags = 0x00000008 #DETACHED_PROCESS
 
     async def get_app_size(self) -> int:
         total_size = 0
@@ -26,7 +25,7 @@ class GWLocalGame(object):
                     if not os.path.islink(fp):
                         total_size += os.path.getsize(fp)
         except asyncio.CancelledError:
-            self.__logger.warn('get_app_size: cancelled')
+            self.__logger.warning('get_app_size: cancelled')
             return total_size
         except Exception:
             self.__logger.exception('get_app_size:')
@@ -41,17 +40,6 @@ class GWLocalGame(object):
 
     def uninstall_game(self) -> None:
         subprocess.Popen([os.path.join(self.__directory, self.__executable), '--uninstall'], creationflags=self.__creationflags, cwd=self.__directory)
-
-
-def get_game_instances_macos() -> List[GWLocalGame]:
-    result = list()
-    game_location = '/Applications/Guild Wars 2 64-bit.app'
-    executable = 'Contents/MacOS/GuildWars2'
-    
-    if os.path.exists(os.path.join(game_location, executable)):
-        result.append(GWLocalGame(game_location, executable))
-    
-    return result
 
 
 def get_game_instances_windows() -> List[GWLocalGame]:
@@ -74,14 +62,11 @@ def get_game_instances_windows() -> List[GWLocalGame]:
                     if os.path.exists(os.path.join(game_dir,game_executable)):
                         result.append(GWLocalGame(game_dir.lower(),game_executable.lower()))
                 except ElementTree.ParseError:
-                    logging.getLogger('gw2_local_game').warn('get_game_instances_windows: failed to parse XML file %s' % file_name)
+                    logging.getLogger('gw2_local_game').warning('get_game_instances_windows: failed to parse XML file %s' % file_name)
                 except PermissionError:
-                    logging.getLogger('gw2_local_game').warn('get_game_instances_windows: permission error')
+                    logging.getLogger('gw2_local_game').warning('get_game_instances_windows: permission error')
 
     return result
 
 def get_game_instances() -> List[GWLocalGame]:
-    if platform.system() == 'Darwin':
-        return get_game_instances_macos()
-    else:
-        return get_game_instances_windows()
+    return get_game_instances_windows()

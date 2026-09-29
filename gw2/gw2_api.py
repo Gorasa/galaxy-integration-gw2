@@ -30,7 +30,7 @@ class GW2API(object):
     RETRIES_COUNT = 5
 
     def __init__(self, plugin_version):
-        self.__http = common.mglx_http.MglxHttp(user_agent='gog_gw2/%s' % plugin_version, verify_ssl=False)
+        self.__http = common.mglx_http.MglxHttp(user_agent='gog_gw2/%s' % plugin_version)
         self.__logger = logging.getLogger('gw2_api')
 
         self._api_key = None
@@ -86,7 +86,7 @@ class GW2API(object):
 
         (status, achievements_account) = await self.__api_get_response(self._api_key, self.API_URL_ACCOUNT_ACHIVEMENTS)
         if status != 200:
-            self.__logger.warn('get_account_achievements: failed to get achievements %s' % status)
+            self.__logger.warning('get_account_achievements: failed to get achievements %s' % status)
             return result
 
         for achievement in achievements_account:
@@ -104,7 +104,7 @@ class GW2API(object):
         self._account_info = None
 
         if not api_key: 
-            self.__logger.warn('do_auth_apikey: api_key is is None')
+            self.__logger.warning('do_auth_apikey: api_key is is None')
             return GW2AuthorizationResult.FAILED
 
         (status_code, account_info) = await self.__api_get_response(api_key, self.API_URL_ACCOUNT)
@@ -124,11 +124,11 @@ class GW2API(object):
                 else:
                     self.__logger.error('do_auth_apikey: unknown error description %s, %s' % (status_code, account_info))
 
-            self.__logger.warn('do_auth_apikey: %s, %s' % (status_code, account_info))
+            self.__logger.warning('do_auth_apikey: %s, %s' % (status_code, account_info))
             return GW2AuthorizationResult.FAILED
 
         if account_info is None:
-            self.__logger.warn('do_auth_apikey: account info is None')
+            self.__logger.warning('do_auth_apikey: account info is None')
             return GW2AuthorizationResult.FAILED
 
         self._api_key = api_key
