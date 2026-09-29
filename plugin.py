@@ -5,6 +5,7 @@ import asyncio
 import logging
 import json
 import os
+import re
 import sys
 import time
 from typing import Any, List, Optional, Tuple
@@ -58,6 +59,15 @@ class GuildWars2Plugin(Plugin):
     GAME_ID = 'guild_wars_2'
     GAME_NAME = 'Guild Wars 2'
     SLEEP_CHECK_ACHIEVEMENTS = 1500
+
+    DLC_NAMES = {
+        'HeartOfThorns': 'Heart of Thorns',
+        'PathOfFire': 'Path of Fire',
+        'EndOfDragons': 'End of Dragons',
+        'SecretsOfTheObscure': 'Secrets of the Obscure',
+        'JanthirWilds': 'Janthir Wilds',
+        'VisionsOfEternity': 'Visions of Eternity',
+    }
 
     #legendary armory unlocks are reported as achievements with ids above this value,
     #regular achievement ids are far below it
@@ -153,23 +163,26 @@ class GuildWars2Plugin(Plugin):
             if dlc == 'PlayForFree':
                 free_to_play = True
                 continue
-            if dlc == 'GuildWars2':
+            if dlc in ('GuildWars2', 'None'):
                 continue
 
-            dlc_id = dlc
-            dlc_name = dlc
-            if dlc_id == 'HeartOfThorns':
-                dlc_name = 'Heart of Thorns'
-            elif dlc_id == 'PathOfFire':
-                dlc_name = 'Path of Fire'
-
-            dlcs.append(Dlc(dlc_id = dlc_id, dlc_title = dlc_name, license_info = LicenseInfo(license_type = LicenseType.SinglePurchase)))
+            dlcs.append(Dlc(dlc_id = dlc, dlc_title = self.__get_dlc_name(dlc), license_info = LicenseInfo(license_type = LicenseType.SinglePurchase)))
 
         license_type = LicenseType.SinglePurchase
         if free_to_play:
             license_type = LicenseType.FreeToPlay
 
         return [ Game(game_id = self.GAME_ID, game_title = self.GAME_NAME, dlcs = dlcs, license_info = LicenseInfo(license_type = license_type)) ]
+
+    def __get_dlc_name(self, dlc_id: str) -> str:
+        if dlc_id in self.DLC_NAMES:
+            return self.DLC_NAMES[dlc_id]
+
+        #unknown expansion, e.g. 'VisionsOfEternity' -> 'Visions of Eternity'
+        words = re.findall('[A-Z][a-z]*|[a-z]+|[0-9]+', dlc_id)
+        if not words:
+            return dlc_id
+        return ' '.join([words[0]] + [x.lower() if x.lower() in ('of', 'the', 'and') else x for x in words[1:]])
 
     #
     # ImportInstalledGames
@@ -233,7 +246,7 @@ class GuildWars2Plugin(Plugin):
             return None
 
         time_played = int(self._gw2_api.get_account_age() / 60)
-        last_played_time = self.persistent_cache.get('last_played')
+        last_played_time = self.__get_cached_time('last_played')
 
         return GameTime(game_id = game_id, time_played = time_played, last_played_time = last_played_time)
 
@@ -278,7 +291,7 @@ class GuildWars2Plugin(Plugin):
             if cache_key not in self.persistent_cache:
                 self.persistent_cache[cache_key] = int(time.time())
 
-            result.append(Achievement(self.persistent_cache.get(cache_key), achievement_id, achievement_name))
+            result.append(Achievement(self.__get_cached_time(cache_key), achievement_id, achievement_name))
 
         if result:
             self.push_cache()
@@ -328,6 +341,15 @@ class GuildWars2Plugin(Plugin):
                     result.append((achievement_id, achievement_name))
 
         return result
+
+    def __get_cached_time(self, cache_key: str) -> Optional[int]:
+        '''
+        returns a timestamp from the persistent cache, Galaxy stores cache values as strings
+        '''
+        try:
+            return int(self.persistent_cache[cache_key])
+        except (KeyError, TypeError, ValueError):
+            return None
 
     async def __resolve_achievement_names(self, achievement_ids: List[int]) -> None:
         '''
