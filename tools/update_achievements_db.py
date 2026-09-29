@@ -40,6 +40,10 @@ def main():
         for achievement in get_json('%s?ids=%s' % (API_URL, ','.join(str(x) for x in chunk))):
             names[achievement['id']] = achievement['name']
 
+    #do not replace the DB with an incomplete one if the API returned partial data
+    if len(names) < len(ids) * 0.9:
+        raise RuntimeError('received only %s names for %s achievements' % (len(names), len(ids)))
+
     with open(DB_PATH, mode='w', encoding='utf-8', newline='\n') as f:
         json.dump({str(k): names[k] for k in sorted(names)}, f, ensure_ascii=False, indent=4)
         f.write('\n')

@@ -28,7 +28,7 @@ GOG Galaxy 2.1+ runs plugins with a bundled 64-bit Python 3.13, so the third-par
 
 ## Achievement names
 
-`gw2/db/achievements.json` contains the names of all achievements known when it was generated. Names of newer achievements are requested from the API at runtime. To update the file run `python tools/update_achievements_db.py`.
+`gw2/db/achievements.json` contains the names of all achievements known when it was generated. Names of newer achievements are requested from the API at runtime. To update the file run `python tools/update_achievements_db.py`. The `Update achievements DB` GitHub workflow does this monthly (or manually via "Run workflow") and opens a pull request if the file changed.
 
 ## Logs
 
