@@ -128,7 +128,7 @@ class GuildWars2Plugin(Plugin):
         AUTH_PARAMS = {
             "window_title": "Login to Guild Wars 2",
             "window_width": 640,
-            "window_height": 460,
+            "window_height": 500,
             "start_uri": self.__authserver.get_uri(),
             "end_uri_regex": '.*finished'
         }
