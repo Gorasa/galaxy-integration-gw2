@@ -58,6 +58,10 @@ class GuildWars2Plugin(Plugin):
     GAME_ID = 'guild_wars_2'
     GAME_NAME = 'Guild Wars 2'
     SLEEP_CHECK_ACHIEVEMENTS = 1500
+
+    #legendary armory unlocks are reported as achievements with ids above this value,
+    #regular achievement ids are far below it
+    LEGENDARY_ACHIEVEMENT_ID_BASE = 1000000000
     SLEEP_CHECK_INSTANCES = 60
     SLEEP_CHECK_RUNNING = 5
     SLEEP_CHECK_RUNNING_ITER = 0.01
@@ -291,7 +295,7 @@ class GuildWars2Plugin(Plugin):
         #achievements without known name are skipped, they will be retried on next check
         return [(x, self.__achievement_names[x]) for x in achievement_ids if x in self.__achievement_names]
 
-    async def __get_unlocked_legendaries(self) -> List[Tuple[str, str]]:
+    async def __get_unlocked_legendaries(self) -> List[Tuple[int, str]]:
         '''
         returns legendary armory unlocks which were not imported yet as pseudo achievements,
         every copy of a legendary item (e.g. second ring) is a separate entry
@@ -313,11 +317,11 @@ class GuildWars2Plugin(Plugin):
                 continue
 
             for copy in range(1, count + 1):
+                #numeric ids like the ones of regular achievements, in a separate range
+                achievement_id = self.LEGENDARY_ACHIEVEMENT_ID_BASE + item_id * 100 + copy
                 if copy == 1:
-                    achievement_id = 'legendary_%s' % item_id
                     achievement_name = 'Legendary: %s' % self.__item_names[item_id]
                 else:
-                    achievement_id = 'legendary_%s_%s' % (item_id, copy)
                     achievement_name = 'Legendary: %s (%s)' % (self.__item_names[item_id], copy)
 
                 if achievement_id not in self.__imported_achievements:
