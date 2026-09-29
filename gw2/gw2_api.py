@@ -11,7 +11,7 @@ import sys
 import pprint
 import threading
 from urllib.parse import parse_qs
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import common.mglx_http
 
@@ -24,6 +24,8 @@ class GW2API(object):
     API_URL_ACHIEVEMENTS = '/v2/achievements'
     API_URL_ACCOUNT = '/v2/account'
     API_URL_ACCOUNT_ACHIVEMENTS = '/v2/account/achievements'
+    API_URL_ACCOUNT_LEGENDARYARMORY = '/v2/account/legendaryarmory'
+    API_URL_ITEMS = '/v2/items'
 
     LOCALSERVER_HOST = '127.0.0.1'
     LOCALSERVER_PORT = 13338
@@ -101,30 +103,54 @@ class GW2API(object):
 
         return result
 
+    async def get_legendary_armory(self) -> Optional[Dict[int, int]]:
+        '''
+        returns unlocked legendary item ids with their count, None if the API key lacks the required permissions or on errors
+        '''
+        if not self._api_key:
+            self.__logger.error('get_legendary_armory: api_key is None')
+            return None
+
+        (status, armory) = await self.__api_get_response(self._api_key, self.API_URL_ACCOUNT_LEGENDARYARMORY)
+        if status != 200 or not isinstance(armory, list):
+            self.__logger.info('get_legendary_armory: failed to get legendary armory %s, API key requires inventories and unlocks permissions' % status)
+            return None
+
+        return {item['id']: item.get('count', 1) for item in armory}
+
     async def get_achievement_names(self, achievement_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
         '''
         returns names of the given achievements and the ids which could not be requested because of errors
         '''
+        return await self.__get_names(self.API_URL_ACHIEVEMENTS, achievement_ids)
+
+    async def get_item_names(self, item_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
+        '''
+        returns names of the given items and the ids which could not be requested because of errors
+        '''
+        return await self.__get_names(self.API_URL_ITEMS, item_ids)
+
+    async def __get_names(self, url: str, object_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
         names = dict()
         failed = set()
 
-        ids = list(achievement_ids)
+        ids = list(object_ids)
         for i in range(0, len(ids), self.API_IDS_PER_REQUEST):
             chunk = ids[i:i + self.API_IDS_PER_REQUEST]
-            (status, achievements) = await self.__api_get_response(self._api_key, self.API_URL_ACHIEVEMENTS, {'ids': ','.join(str(x) for x in chunk)})
+            (status, objects) = await self.__api_get_response(self._api_key, url, {'ids': ','.join(str(x) for x in chunk)})
 
             #404 means that none of the requested ids exists
             if status == 404:
                 continue
 
             #206 means that some of the requested ids do not exist
-            if status not in (200, 206) or not isinstance(achievements, list):
-                self.__logger.warning('get_achievement_names: failed to get achievements info %s' % status)
+            if status not in (200, 206) or not isinstance(objects, list):
+                self.__logger.warning('__get_names: failed to get names from %s: %s' % (url, status))
                 failed.update(chunk)
                 continue
 
-            for achievement in achievements:
-                names[achievement['id']] = achievement['name']
+            for obj in objects:
+                names[obj['id']] = obj['name']
 
         return (names, failed)
 

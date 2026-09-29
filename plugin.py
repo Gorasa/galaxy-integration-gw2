@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 import webbrowser
 
 #expand sys.path
@@ -82,6 +82,10 @@ class GuildWars2Plugin(Plugin):
         #achievement names, the offline DB is completed by names from the API
         self.__achievement_names = dict()
         self.__achievements_invalid = set()
+
+        #legendary item names, requested from the API
+        self.__item_names = dict()
+        self.__items_invalid = set()
         try:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gw2/db/achievements.json"), mode="r", encoding="utf-8") as f:
                 self.__achievement_names = {int(k): v for k, v in json.load(f).items()}
@@ -249,35 +253,75 @@ class GuildWars2Plugin(Plugin):
             self.__logger.warning('plugin/get_unlocked_achievements: unknown game_id %s' % game_id)
             return list()
 
-        self.__imported_achievements = list()
+        self.__imported_achievements = set()
         return await self.__import_new_achievements()
 
     async def __import_new_achievements(self) -> List[Achievement]:
         '''
-        returns account achievements which were not imported yet and marks them as imported
+        returns account achievements and legendaries which were not imported yet and marks them as imported
         '''
         result = list()
 
-        achievement_ids = [x for x in await self._gw2_api.get_account_achievements() if x not in self.__imported_achievements]
-        await self.__resolve_achievement_names(achievement_ids)
+        unlocked = await self.__get_unlocked_achievements()
+        unlocked.extend(await self.__get_unlocked_legendaries())
 
-        for achievement_id in achievement_ids:
-            #skip achievements without known name, they will be retried on next check
-            if achievement_id not in self.__achievement_names:
-                continue
-
+        for (achievement_id, achievement_name) in unlocked:
             #mark as processed
-            self.__imported_achievements.append(achievement_id)
+            self.__imported_achievements.add(achievement_id)
 
             #save unlock time
             cache_key = 'achievement_%s' % achievement_id
             if cache_key not in self.persistent_cache:
                 self.persistent_cache[cache_key] = int(time.time())
 
-            result.append(Achievement(self.persistent_cache.get(cache_key), achievement_id, self.__achievement_names[achievement_id]))
+            result.append(Achievement(self.persistent_cache.get(cache_key), achievement_id, achievement_name))
 
         if result:
             self.push_cache()
+
+        return result
+
+    async def __get_unlocked_achievements(self) -> List[Tuple[int, str]]:
+        '''
+        returns id and name of unlocked account achievements which were not imported yet
+        '''
+        achievement_ids = [x for x in await self._gw2_api.get_account_achievements() if x not in self.__imported_achievements]
+        await self.__resolve_achievement_names(achievement_ids)
+
+        #achievements without known name are skipped, they will be retried on next check
+        return [(x, self.__achievement_names[x]) for x in achievement_ids if x in self.__achievement_names]
+
+    async def __get_unlocked_legendaries(self) -> List[Tuple[str, str]]:
+        '''
+        returns legendary armory unlocks which were not imported yet as pseudo achievements,
+        every copy of a legendary item (e.g. second ring) is a separate entry
+        '''
+        armory = await self._gw2_api.get_legendary_armory()
+        if not armory:
+            return list()
+
+        #request names of new legendary items
+        unknown_ids = [x for x in armory if x not in self.__item_names and x not in self.__items_invalid]
+        if unknown_ids:
+            (names, failed_ids) = await self._gw2_api.get_item_names(unknown_ids)
+            self.__item_names.update(names)
+            self.__items_invalid.update(x for x in unknown_ids if x not in names and x not in failed_ids)
+
+        result = list()
+        for (item_id, count) in armory.items():
+            if item_id not in self.__item_names:
+                continue
+
+            for copy in range(1, count + 1):
+                if copy == 1:
+                    achievement_id = 'legendary_%s' % item_id
+                    achievement_name = 'Legendary: %s' % self.__item_names[item_id]
+                else:
+                    achievement_id = 'legendary_%s_%s' % (item_id, copy)
+                    achievement_name = 'Legendary: %s (%s)' % (self.__item_names[item_id], copy)
+
+                if achievement_id not in self.__imported_achievements:
+                    result.append((achievement_id, achievement_name))
 
         return result
 
