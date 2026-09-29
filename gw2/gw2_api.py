@@ -124,14 +124,18 @@ class GW2API(object):
         '''
         return await self.__get_names(self.API_URL_ACHIEVEMENTS, achievement_ids)
 
-    async def get_item_names(self, item_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
+    async def get_items(self, item_ids: Iterable[int]) -> Tuple[Dict[int, Dict], Set[int]]:
         '''
-        returns names of the given items and the ids which could not be requested because of errors
+        returns info of the given items and the ids which could not be requested because of errors
         '''
-        return await self.__get_names(self.API_URL_ITEMS, item_ids)
+        return await self.__get_objects(self.API_URL_ITEMS, item_ids)
 
     async def __get_names(self, url: str, object_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
-        names = dict()
+        (objects, failed) = await self.__get_objects(url, object_ids)
+        return ({k: v['name'] for (k, v) in objects.items()}, failed)
+
+    async def __get_objects(self, url: str, object_ids: Iterable[int]) -> Tuple[Dict[int, Dict], Set[int]]:
+        result = dict()
         failed = set()
 
         ids = list(object_ids)
@@ -141,19 +145,19 @@ class GW2API(object):
 
             #404 means that none of the requested ids exists
             if status == 404:
-                self.__logger.info('__get_names: unknown ids for %s: %s' % (url, chunk))
+                self.__logger.info('__get_objects: unknown ids for %s: %s' % (url, chunk))
                 continue
 
             #206 means that some of the requested ids do not exist
             if status not in (200, 206) or not isinstance(objects, list):
-                self.__logger.warning('__get_names: failed to get names from %s: %s' % (url, status))
+                self.__logger.warning('__get_objects: failed to get objects from %s: %s' % (url, status))
                 failed.update(chunk)
                 continue
 
             for obj in objects:
-                names[obj['id']] = obj['name']
+                result[obj['id']] = obj
 
-        return (names, failed)
+        return (result, failed)
 
     #
     # Authorization server
