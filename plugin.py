@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 import asyncio
+import collections
 import logging
 import json
 import os
 import re
 import sys
 import time
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import webbrowser
 
 #expand sys.path
@@ -97,8 +98,8 @@ class GuildWars2Plugin(Plugin):
         self.__achievement_names = dict()
         self.__achievements_invalid = set()
 
-        #legendary item names, requested from the API
-        self.__item_names = dict()
+        #legendary item info, requested from the API
+        self.__items = dict()
         self.__items_invalid = set()
         try:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gw2/db/achievements.json"), mode="r", encoding="utf-8") as f:
@@ -317,28 +318,50 @@ class GuildWars2Plugin(Plugin):
         if not armory:
             return list()
 
-        #request names of new legendary items
-        unknown_ids = [x for x in armory if x not in self.__item_names and x not in self.__items_invalid]
+        #request info of new legendary items
+        unknown_ids = [x for x in armory if x not in self.__items and x not in self.__items_invalid]
         if unknown_ids:
-            (names, failed_ids) = await self._gw2_api.get_item_names(unknown_ids)
-            self.__item_names.update(names)
-            self.__items_invalid.update(x for x in unknown_ids if x not in names and x not in failed_ids)
+            (items, failed_ids) = await self._gw2_api.get_items(unknown_ids)
+            self.__items.update(items)
+            self.__items_invalid.update(x for x in unknown_ids if x not in items and x not in failed_ids)
+
+        names = self.__get_legendary_names([x for x in armory if x in self.__items])
 
         result = list()
-        for (item_id, count) in armory.items():
-            if item_id not in self.__item_names:
-                continue
-
-            for copy in range(1, count + 1):
+        for (item_id, name) in names.items():
+            for copy in range(1, armory[item_id] + 1):
                 #numeric ids like the ones of regular achievements, in a separate range
                 achievement_id = self.LEGENDARY_ACHIEVEMENT_ID_BASE + item_id * 100 + copy
-                if copy == 1:
-                    achievement_name = 'Legendary: %s' % self.__item_names[item_id]
-                else:
-                    achievement_name = 'Legendary: %s (%s)' % (self.__item_names[item_id], copy)
+                achievement_name = name if copy == 1 else '%s (%s)' % (name, copy)
 
                 if achievement_id not in self.__imported_achievements:
                     result.append((achievement_id, achievement_name))
+
+        return result
+
+    def __get_legendary_names(self, item_ids: List[int]) -> Dict[int, str]:
+        '''
+        returns achievement names for legendary items, items sharing a name (e.g. the light, medium
+        and heavy variant of an armor) get their weight class or weapon type appended
+        '''
+        name_counts = collections.Counter(self.__items[x]['name'] for x in item_ids)
+
+        result = dict()
+        for item_id in item_ids:
+            item = self.__items[item_id]
+            name = item['name']
+
+            if name_counts[name] > 1:
+                details = item.get('details') or dict()
+                qualifier = details.get('weight_class') if item.get('type') == 'Armor' else details.get('type')
+                if qualifier:
+                    name = '%s (%s)' % (name, ' '.join(re.findall('[A-Z][a-z]*|[a-z]+|[0-9]+', qualifier)))
+
+            #avoid names like 'Legendary: Legendary Rune'
+            if not name.lower().startswith('legendary'):
+                name = 'Legendary: %s' % name
+
+            result[item_id] = name
 
         return result
 
