@@ -68,6 +68,9 @@ class GuildWars2Plugin(Plugin):
         'JanthirWilds': 'Janthir Wilds',
         'VisionsOfEternity': 'Visions of Eternity',
     }
+    #TEST: only report achievements known to the plugin before 0.6.0 (gw2/db/achievements_legacy_ids.json),
+    #to check whether Galaxy rejects imports containing achievements missing in its catalog
+    LEGACY_ACHIEVEMENTS_ONLY = True
     SLEEP_CHECK_INSTANCES = 60
     SLEEP_CHECK_RUNNING = 5
     SLEEP_CHECK_RUNNING_ITER = 0.01
@@ -97,6 +100,14 @@ class GuildWars2Plugin(Plugin):
                 self.__achievement_names = {int(k): v for k, v in json.load(f).items()}
         except Exception:
             self.__logger.exception('__init__: failed to read achievements info DB')
+
+        self.__legacy_achievement_ids = None
+        if self.LEGACY_ACHIEVEMENTS_ONLY:
+            try:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gw2/db/achievements_legacy_ids.json"), mode="r", encoding="utf-8") as f:
+                    self.__legacy_achievement_ids = set(json.load(f))
+            except Exception:
+                self.__logger.exception('__init__: failed to read legacy achievement ids')
 
     #
     # Authentication
@@ -296,7 +307,14 @@ class GuildWars2Plugin(Plugin):
         await self.__resolve_achievement_names(achievement_ids)
 
         #achievements without known name are skipped, they will be retried on next check
-        return [(x, self.__achievement_names[x]) for x in achievement_ids if x in self.__achievement_names]
+        result = [(x, self.__achievement_names[x]) for x in achievement_ids if x in self.__achievement_names]
+
+        if self.__legacy_achievement_ids is not None:
+            legacy = [x for x in result if x[0] in self.__legacy_achievement_ids]
+            self.__logger.info('__get_unlocked_achievements: legacy achievements only, %s of %s' % (len(legacy), len(result)))
+            result = legacy
+
+        return result
 
     def __get_cached_time(self, cache_key: str) -> Optional[int]:
         '''
