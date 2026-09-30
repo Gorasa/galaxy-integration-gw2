@@ -280,7 +280,8 @@ class GuildWars2Plugin(Plugin):
             if cache_key not in self.persistent_cache:
                 self.persistent_cache[cache_key] = int(time.time())
 
-            result.append(Achievement(self.__get_cached_time(cache_key), achievement_id, achievement_name))
+            #the Galaxy API defines achievement ids as strings
+            result.append(Achievement(self.__get_cached_time(cache_key), str(achievement_id), achievement_name))
 
         if result:
             self.push_cache()
