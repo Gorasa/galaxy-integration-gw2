@@ -24,8 +24,6 @@ class GW2API(object):
     API_URL_ACHIEVEMENTS = '/v2/achievements'
     API_URL_ACCOUNT = '/v2/account'
     API_URL_ACCOUNT_ACHIVEMENTS = '/v2/account/achievements'
-    API_URL_ACCOUNT_LEGENDARYARMORY = '/v2/account/legendaryarmory'
-    API_URL_ITEMS = '/v2/items'
 
     LOCALSERVER_HOST = '127.0.0.1'
     LOCALSERVER_PORT = 13338
@@ -103,32 +101,11 @@ class GW2API(object):
 
         return result
 
-    async def get_legendary_armory(self) -> Optional[Dict[int, int]]:
-        '''
-        returns unlocked legendary item ids with their count, None if the API key lacks the required permissions or on errors
-        '''
-        if not self._api_key:
-            self.__logger.error('get_legendary_armory: api_key is None')
-            return None
-
-        (status, armory) = await self.__api_get_response(self._api_key, self.API_URL_ACCOUNT_LEGENDARYARMORY)
-        if status != 200 or not isinstance(armory, list):
-            self.__logger.info('get_legendary_armory: failed to get legendary armory %s, API key requires inventories and unlocks permissions' % status)
-            return None
-
-        return {item['id']: item.get('count', 1) for item in armory}
-
     async def get_achievement_names(self, achievement_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
         '''
         returns names of the given achievements and the ids which could not be requested because of errors
         '''
         return await self.__get_names(self.API_URL_ACHIEVEMENTS, achievement_ids)
-
-    async def get_items(self, item_ids: Iterable[int]) -> Tuple[Dict[int, Dict], Set[int]]:
-        '''
-        returns info of the given items and the ids which could not be requested because of errors
-        '''
-        return await self.__get_objects(self.API_URL_ITEMS, item_ids)
 
     async def __get_names(self, url: str, object_ids: Iterable[int]) -> Tuple[Dict[int, str], Set[int]]:
         (objects, failed) = await self.__get_objects(url, object_ids)
