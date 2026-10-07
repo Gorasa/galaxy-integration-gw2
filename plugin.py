@@ -68,9 +68,12 @@ class GuildWars2Plugin(Plugin):
         'JanthirWilds': 'Janthir Wilds',
         'VisionsOfEternity': 'Visions of Eternity',
     }
-    #TEST: report at most this many achievements (lowest ids first), to check whether Galaxy
-    #fails to upload large achievement lists to the GOG backend
-    ACHIEVEMENTS_LIMIT = 200
+    #Galaxy fails to upload large achievement lists to the GOG backend (1190 achievements never got
+    #through, 200 did), so not yet reported achievements are passed to Galaxy in batches of this size
+    ACHIEVEMENTS_BATCH_SIZE = 200
+    CACHE_KEY_REPORTED_ACHIEVEMENTS = 'achievements_reported'
+    #minimum time between two batches, so Galaxy can upload one batch before the next one is added
+    ACHIEVEMENTS_BATCH_INTERVAL = 300
     SLEEP_CHECK_INSTANCES = 60
     SLEEP_CHECK_RUNNING = 5
     SLEEP_CHECK_RUNNING_ITER = 0.01
@@ -90,6 +93,10 @@ class GuildWars2Plugin(Plugin):
 
         self._last_state = LocalGameState.None_
         self.__imported_achievements = None
+
+        #achievements which were passed to Galaxy before, stored in the persistent cache
+        self.__reported_achievements = set()
+        self.__last_batch_time = 0
 
 
         #achievement names, the offline DB is completed by names from the API
@@ -266,41 +273,57 @@ class GuildWars2Plugin(Plugin):
             return list()
 
         self.__imported_achievements = set()
-        return await self.__import_new_achievements()
+        return self.__import_achievements(await self.__get_unlocked_achievements())
 
-    async def __import_new_achievements(self) -> List[Achievement]:
+    def __import_achievements(self, unlocked: List[Tuple[int, str]]) -> List[Achievement]:
         '''
-        returns account achievements which were not imported yet and marks them as imported
+        returns the given achievements which were reported to Galaxy before plus the next batch of not yet
+        reported ones, and marks them as imported
         '''
-        result = list()
+        cache_changed = False
 
-        unlocked = sorted(await self.__get_unlocked_achievements())
-        remaining = max(0, self.ACHIEVEMENTS_LIMIT - len(self.__imported_achievements))
-        self.__logger.info('__import_new_achievements: TEST limit %s, reporting %s of %s new achievements' % (self.ACHIEVEMENTS_LIMIT, min(remaining, len(unlocked)), len(unlocked)))
-        unlocked = unlocked[:remaining]
-
-        for (achievement_id, achievement_name) in unlocked:
-            #mark as processed
-            self.__imported_achievements.add(achievement_id)
-
-            #save unlock time
+        #the API does not provide unlock times, the time an achievement was seen first is used instead
+        now = int(time.time())
+        for (achievement_id, _) in unlocked:
             cache_key = 'achievement_%s' % achievement_id
             if cache_key not in self.persistent_cache:
-                self.persistent_cache[cache_key] = int(time.time())
+                self.persistent_cache[cache_key] = now
+                cache_changed = True
+
+        #lowest ids first, they are most likely known to Galaxy
+        new_ids = list()
+        if now - self.__last_batch_time >= self.ACHIEVEMENTS_BATCH_INTERVAL:
+            new_ids = sorted(x for (x, _) in unlocked if x not in self.__reported_achievements)[:self.ACHIEVEMENTS_BATCH_SIZE]
+
+        if new_ids:
+            self.__last_batch_time = now
+            self.__reported_achievements.update(new_ids)
+            self.persistent_cache[self.CACHE_KEY_REPORTED_ACHIEVEMENTS] = ','.join(str(x) for x in sorted(self.__reported_achievements))
+            cache_changed = True
+
+            pending = len([x for (x, _) in unlocked if x not in self.__reported_achievements])
+            self.__logger.info('__import_achievements: reporting %s new achievements, %s left for the next checks' % (len(new_ids), pending))
+
+        result = list()
+        for (achievement_id, achievement_name) in unlocked:
+            if achievement_id not in self.__reported_achievements:
+                continue
+
+            self.__imported_achievements.add(achievement_id)
 
             #the Galaxy API defines achievement ids as strings
-            result.append(Achievement(self.__get_cached_time(cache_key), str(achievement_id), achievement_name))
+            result.append(Achievement(self.__get_cached_time('achievement_%s' % achievement_id), str(achievement_id), achievement_name))
 
-        if result:
+        if cache_changed:
             self.push_cache()
 
         return result
 
     async def __get_unlocked_achievements(self) -> List[Tuple[int, str]]:
         '''
-        returns id and name of unlocked account achievements which were not imported yet
+        returns id and name of unlocked account achievements
         '''
-        achievement_ids = [x for x in await self._gw2_api.get_account_achievements() if x not in self.__imported_achievements]
+        achievement_ids = await self._gw2_api.get_account_achievements()
         await self.__resolve_achievement_names(achievement_ids)
 
         #achievements without known name are skipped, they will be retried on next check
@@ -358,6 +381,11 @@ class GuildWars2Plugin(Plugin):
             self.__logger.info('handshake_complete: removed %s legendary unlock times from the cache' % len(stale_keys))
             self.push_cache()
 
+        try:
+            self.__reported_achievements = {int(x) for x in self.persistent_cache.get(self.CACHE_KEY_REPORTED_ACHIEVEMENTS, '').split(',') if x}
+        except ValueError:
+            self.__logger.exception('handshake_complete: failed to read reported achievements')
+
     def tick(self):
         if not self._task_check_for_running or self._task_check_for_running.done():
             self._task_check_for_running = self.create_task(self.task_check_for_running_func(), "task_check_for_running_game")
@@ -377,7 +405,8 @@ class GuildWars2Plugin(Plugin):
 
     async def task_check_for_achievements(self):
         if self.__imported_achievements is not None:
-            for achievement in await self.__import_new_achievements():
+            unlocked = [x for x in await self.__get_unlocked_achievements() if x[0] not in self.__imported_achievements]
+            for achievement in self.__import_achievements(unlocked):
                 self.unlock_achievement(self.GAME_ID, achievement)
 
         await asyncio.sleep(self.SLEEP_CHECK_ACHIEVEMENTS)

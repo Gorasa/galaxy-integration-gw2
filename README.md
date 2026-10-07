@@ -43,6 +43,7 @@ Plugin logs are written to `%programdata%\GOG.com\Galaxy\logs\` (file name start
 * TLS certificates of the Guild Wars 2 API are verified again
 * Fixed newly unlocked achievements not being pushed to GOG Galaxy
 * Fixed achievements added to the game after 2020 not being imported: names missing in the offline DB are requested from the API
+* Fixed achievements not showing up in GOG Galaxy (0%) for accounts with many achievements: GOG Galaxy fails to upload large lists to its backend, so achievements are passed to it in batches of 200 every 5 minutes or later. After the first connection it takes a while until all achievements are shown.
 * Fixed every API request being sent 5 times, errors are retried with a delay now
 * Fixed wrong pages shown after login
 
