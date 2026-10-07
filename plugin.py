@@ -97,6 +97,7 @@ class GuildWars2Plugin(Plugin):
         #achievements which were passed to Galaxy before, stored in the persistent cache
         self.__reported_achievements = set()
         self.__last_batch_time = 0
+        self.__achievements_pending = False
 
 
         #achievement names, the offline DB is completed by names from the API
@@ -301,7 +302,9 @@ class GuildWars2Plugin(Plugin):
             self.persistent_cache[self.CACHE_KEY_REPORTED_ACHIEVEMENTS] = ','.join(str(x) for x in sorted(self.__reported_achievements))
             cache_changed = True
 
-            pending = len([x for (x, _) in unlocked if x not in self.__reported_achievements])
+        pending = len([x for (x, _) in unlocked if x not in self.__reported_achievements])
+        self.__achievements_pending = pending > 0
+        if new_ids:
             self.__logger.info('__import_achievements: reporting %s new achievements, %s left for the next checks' % (len(new_ids), pending))
 
         result = list()
@@ -409,7 +412,11 @@ class GuildWars2Plugin(Plugin):
             for achievement in self.__import_achievements(unlocked):
                 self.unlock_achievement(self.GAME_ID, achievement)
 
-        await asyncio.sleep(self.SLEEP_CHECK_ACHIEVEMENTS)
+        #check again soon while Galaxy did not import achievements yet or batches are pending
+        if self.__imported_achievements is None or self.__achievements_pending:
+            await asyncio.sleep(self.ACHIEVEMENTS_BATCH_INTERVAL)
+        else:
+            await asyncio.sleep(self.SLEEP_CHECK_ACHIEVEMENTS)
 
 
     async def task_check_for_game_instances(self):
