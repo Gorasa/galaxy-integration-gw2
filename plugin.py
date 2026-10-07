@@ -69,7 +69,8 @@ class GuildWars2Plugin(Plugin):
         'VisionsOfEternity': 'Visions of Eternity',
     }
     #Galaxy fails to upload large achievement lists to the GOG backend (1190 achievements never got
-    #through, 200 did), so not yet reported achievements are passed to Galaxy in batches of this size
+    #through, 200 did) and uploads only after its achievements import, not after single unlocks.
+    #So not yet reported achievements are added to the import in batches of this size
     ACHIEVEMENTS_BATCH_SIZE = 200
     CACHE_KEY_REPORTED_ACHIEVEMENTS = 'achievements_reported'
     #minimum time between two batches, so Galaxy can upload one batch before the next one is added
@@ -97,7 +98,9 @@ class GuildWars2Plugin(Plugin):
         #achievements which were passed to Galaxy before, stored in the persistent cache
         self.__reported_achievements = set()
         self.__last_batch_time = 0
-        self.__achievements_pending = False
+
+        #unlocked achievements which wait for one of the next batches
+        self.__achievements_backlog = set()
 
 
         #achievement names, the offline DB is completed by names from the API
@@ -274,12 +277,21 @@ class GuildWars2Plugin(Plugin):
             return list()
 
         self.__imported_achievements = set()
-        return self.__import_achievements(await self.__get_unlocked_achievements())
+        unlocked = await self.__get_unlocked_achievements()
 
-    def __import_achievements(self, unlocked: List[Tuple[int, str]]) -> List[Achievement]:
+        batch_size = 0
+        if time.time() - self.__last_batch_time >= self.ACHIEVEMENTS_BATCH_INTERVAL:
+            batch_size = self.ACHIEVEMENTS_BATCH_SIZE
+            self.__last_batch_time = time.time()
+
+        result = self.__import_achievements(unlocked, batch_size)
+        self.__achievements_backlog = {x for (x, _) in unlocked if x not in self.__reported_achievements}
+        return result
+
+    def __import_achievements(self, unlocked: List[Tuple[int, str]], batch_size: Optional[int]) -> List[Achievement]:
         '''
-        returns the given achievements which were reported to Galaxy before plus the next batch of not yet
-        reported ones, and marks them as imported
+        returns the given achievements which were reported to Galaxy before plus up to batch_size (all if None)
+        not yet reported ones, and marks them as imported
         '''
         cache_changed = False
 
@@ -292,20 +304,14 @@ class GuildWars2Plugin(Plugin):
                 cache_changed = True
 
         #lowest ids first, they are most likely known to Galaxy
-        new_ids = list()
-        if now - self.__last_batch_time >= self.ACHIEVEMENTS_BATCH_INTERVAL:
-            new_ids = sorted(x for (x, _) in unlocked if x not in self.__reported_achievements)[:self.ACHIEVEMENTS_BATCH_SIZE]
-
+        new_ids = sorted(x for (x, _) in unlocked if x not in self.__reported_achievements)[:batch_size]
         if new_ids:
-            self.__last_batch_time = now
             self.__reported_achievements.update(new_ids)
             self.persistent_cache[self.CACHE_KEY_REPORTED_ACHIEVEMENTS] = ','.join(str(x) for x in sorted(self.__reported_achievements))
             cache_changed = True
 
-        pending = len([x for (x, _) in unlocked if x not in self.__reported_achievements])
-        self.__achievements_pending = pending > 0
-        if new_ids:
-            self.__logger.info('__import_achievements: reporting %s new achievements, %s left for the next checks' % (len(new_ids), pending))
+            pending = len([x for (x, _) in unlocked if x not in self.__reported_achievements])
+            self.__logger.info('__import_achievements: reporting %s new achievements, %s left for the next imports' % (len(new_ids), pending))
 
         result = list()
         for (achievement_id, achievement_name) in unlocked:
@@ -408,15 +414,12 @@ class GuildWars2Plugin(Plugin):
 
     async def task_check_for_achievements(self):
         if self.__imported_achievements is not None:
-            unlocked = [x for x in await self.__get_unlocked_achievements() if x[0] not in self.__imported_achievements]
-            for achievement in self.__import_achievements(unlocked):
+            #only achievements unlocked since the last import, the backlog is added by the next imports
+            unlocked = [x for x in await self.__get_unlocked_achievements() if x[0] not in self.__imported_achievements and x[0] not in self.__achievements_backlog]
+            for achievement in self.__import_achievements(unlocked, None):
                 self.unlock_achievement(self.GAME_ID, achievement)
 
-        #check again soon while Galaxy did not import achievements yet or batches are pending
-        if self.__imported_achievements is None or self.__achievements_pending:
-            await asyncio.sleep(self.ACHIEVEMENTS_BATCH_INTERVAL)
-        else:
-            await asyncio.sleep(self.SLEEP_CHECK_ACHIEVEMENTS)
+        await asyncio.sleep(self.SLEEP_CHECK_ACHIEVEMENTS)
 
 
     async def task_check_for_game_instances(self):
