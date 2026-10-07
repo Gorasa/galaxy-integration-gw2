@@ -72,7 +72,7 @@ class GuildWars2Plugin(Plugin):
     #through, 200 did) and uploads only after its achievements import, not after single unlocks.
     #So not yet reported achievements are added to the import in batches of this size
     ACHIEVEMENTS_BATCH_SIZE = 200
-    CACHE_KEY_REPORTED_ACHIEVEMENTS = 'achievements_reported'
+    CACHE_KEY_REPORTED_ACHIEVEMENTS = 'achievements_reported_v2'
     #minimum time between two batches, so Galaxy can upload one batch before the next one is added
     ACHIEVEMENTS_BATCH_INTERVAL = 300
     SLEEP_CHECK_INSTANCES = 60
@@ -388,6 +388,12 @@ class GuildWars2Plugin(Plugin):
             del self.persistent_cache[key]
         if stale_keys:
             self.__logger.info('handshake_complete: removed %s legendary unlock times from the cache' % len(stale_keys))
+            self.push_cache()
+
+        #reported achievements of a development version which added batches without Galaxy uploading them,
+        #starting over costs a few imports in which Galaxy skips the already uploaded achievements
+        if self.persistent_cache.pop('achievements_reported', None) is not None:
+            self.__logger.info('handshake_complete: reset reported achievements')
             self.push_cache()
 
         try:
