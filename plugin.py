@@ -68,6 +68,9 @@ class GuildWars2Plugin(Plugin):
         'JanthirWilds': 'Janthir Wilds',
         'VisionsOfEternity': 'Visions of Eternity',
     }
+    #TEST: report at most this many achievements (lowest ids first), to check whether Galaxy
+    #fails to upload large achievement lists to the GOG backend
+    ACHIEVEMENTS_LIMIT = 200
     SLEEP_CHECK_INSTANCES = 60
     SLEEP_CHECK_RUNNING = 5
     SLEEP_CHECK_RUNNING_ITER = 0.01
@@ -271,7 +274,12 @@ class GuildWars2Plugin(Plugin):
         '''
         result = list()
 
-        for (achievement_id, achievement_name) in await self.__get_unlocked_achievements():
+        unlocked = sorted(await self.__get_unlocked_achievements())
+        remaining = max(0, self.ACHIEVEMENTS_LIMIT - len(self.__imported_achievements))
+        self.__logger.info('__import_new_achievements: TEST limit %s, reporting %s of %s new achievements' % (self.ACHIEVEMENTS_LIMIT, min(remaining, len(unlocked)), len(unlocked)))
+        unlocked = unlocked[:remaining]
+
+        for (achievement_id, achievement_name) in unlocked:
             #mark as processed
             self.__imported_achievements.add(achievement_id)
 
