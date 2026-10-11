@@ -6,7 +6,7 @@ Features:
 * Import of the owned game and expansions (Heart of Thorns, Path of Fire, ...)
 * Detection of installed and running game, launch, install and uninstall
 * Import of game time and achievements
-* Legendary armory unlocks are imported as achievements (e.g. "Legendary: Astralaria")
+* Legendary armory unlocks are imported as achievements (e.g. "Legendary unlocked: Astralaria (Weapon)")
 
 ## Requirements
 

@@ -373,43 +373,56 @@ class GuildWars2Plugin(Plugin):
             self.__items.update(items)
             self.__items_invalid.update(x for x in unknown_ids if x not in items and x not in failed_ids)
 
-        names = self.__get_legendary_names([x for x in armory if x in self.__items])
+        details = self.__get_legendary_details([x for x in armory if x in self.__items])
 
         result = list()
-        for (item_id, name) in names.items():
+        for (item_id, item_details) in details.items():
             for copy in range(1, armory[item_id] + 1):
                 #numeric ids like the ones of regular achievements, in a separate range
                 achievement_id = self.LEGENDARY_ACHIEVEMENT_ID_BASE + item_id * 100 + copy
-                achievement_name = name if copy == 1 else '%s (%s)' % (name, copy)
+
+                #e.g. 'Legendary unlocked: Coalescence (Trinket, copy 2)'
+                parts = item_details + (['copy %s' % copy] if copy > 1 else [])
+                achievement_name = 'Legendary unlocked: %s' % self.__items[item_id]['name']
+                if parts:
+                    achievement_name = '%s (%s)' % (achievement_name, ', '.join(parts))
+
                 result.append((achievement_id, achievement_name))
 
         return result
 
-    def __get_legendary_names(self, item_ids: List[int]) -> Dict[int, str]:
+    def __get_legendary_details(self, item_ids: List[int]) -> Dict[int, List[str]]:
         '''
-        returns achievement names for legendary items, items sharing a name (e.g. the light, medium
-        and heavy variant of an armor) get their weight class or weapon type appended
+        returns the details shown in the achievement names of legendary items: the item type (e.g. 'Armor',
+        'Upgrade Component'), and for items sharing a name (e.g. the light, medium and heavy variant of an
+        armor) their weight class or weapon type
         '''
         name_counts = collections.Counter(self.__items[x]['name'] for x in item_ids)
 
         result = dict()
         for item_id in item_ids:
             item = self.__items[item_id]
-            name = item['name']
+            details = list()
 
-            if name_counts[name] > 1:
-                details = item.get('details') or dict()
-                qualifier = details.get('weight_class') if item.get('type') == 'Armor' else details.get('type')
+            if item.get('type'):
+                details.append(self.__split_words(item['type']))
+
+            if name_counts[item['name']] > 1:
+                item_details = item.get('details') or dict()
+                qualifier = item_details.get('weight_class') if item.get('type') == 'Armor' else item_details.get('type')
                 if qualifier:
-                    name = '%s (%s)' % (name, ' '.join(re.findall('[A-Z][a-z]*|[a-z]+|[0-9]+', qualifier)))
+                    details.append(self.__split_words(qualifier))
 
-            #avoid names like 'Legendary: Legendary Rune'
-            if not name.lower().startswith('legendary'):
-                name = 'Legendary: %s' % name
-
-            result[item_id] = name
+            result[item_id] = details
 
         return result
+
+    @staticmethod
+    def __split_words(value: str) -> str:
+        '''
+        returns API values like 'UpgradeComponent' as readable words
+        '''
+        return ' '.join(re.findall('[A-Z][a-z]*|[a-z]+|[0-9]+', value))
 
     def __get_cached_time(self, cache_key: str) -> Optional[int]:
         '''
