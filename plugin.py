@@ -99,8 +99,8 @@ class GuildWars2Plugin(Plugin):
         self.__reported_achievements = set()
         self.__last_batch_time = 0
 
-        #unlocked achievements which wait for one of the next batches
-        self.__achievements_backlog = set()
+        #unlocked achievements which wait for one of the next batches, None until an import got achievements
+        self.__achievements_backlog = None
 
 
         #achievement names, the offline DB is completed by names from the API
@@ -285,7 +285,11 @@ class GuildWars2Plugin(Plugin):
             self.__last_batch_time = time.time()
 
         result = self.__import_achievements(unlocked, batch_size)
-        self.__achievements_backlog = {x for (x, _) in unlocked if x not in self.__reported_achievements}
+
+        #an empty list means that the API request failed (or that there are no achievements), keep the
+        #previous backlog then, so that the background check does not report the backlog at once
+        if unlocked:
+            self.__achievements_backlog = {x for (x, _) in unlocked if x not in self.__reported_achievements}
         return result
 
     def __import_achievements(self, unlocked: List[Tuple[int, str]], batch_size: Optional[int]) -> List[Achievement]:
@@ -419,7 +423,7 @@ class GuildWars2Plugin(Plugin):
     #
 
     async def task_check_for_achievements(self):
-        if self.__imported_achievements is not None:
+        if self.__imported_achievements is not None and self.__achievements_backlog is not None:
             #only achievements unlocked since the last import, the backlog is added by the next imports
             unlocked = [x for x in await self.__get_unlocked_achievements() if x[0] not in self.__imported_achievements and x[0] not in self.__achievements_backlog]
             for achievement in self.__import_achievements(unlocked, None):
